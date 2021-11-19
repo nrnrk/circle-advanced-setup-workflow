@@ -19,10 +19,22 @@ jobs:
 workflows:
   module-a-workflow:
     jobs:
-      - common-pre
+      - common-pre:
+          filters:
+            tags:
+              only:
+                - /.*/
       - module-a-build:
           requires:
             - common-pre
+          filters:
+            tags:
+              only:
+                - /.*/
       - module-a-hello-build/hello-build:
           requires:
             - common-pre
+          filters:
+            tags:
+              only:
+                - /.*/
