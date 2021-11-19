@@ -45,10 +45,15 @@ jobs:
 workflows:
   # The setup workflow
   setup-workflow:
-    when: << pipeline.parameters.run-setup >>
+    when:
+      or:
+        - << pipeline.parameters.run-setup >>
+        - matches: {pattern: "^pre-release-.*|^release-.*", value: << pipeline.git.tag >>}
     jobs:
       - config-splitting/setup-dynamic-config:
           force-all: << pipeline.parameters.force-all >>
+          force-all-tag-pattern: "^pre-release-.*|^release-.*"
+          git-tag: << pipeline.git.tag >>
           base-revision: main
           # If A is modified, the job for A will run
           # Similarly if B is modified, the job for B will run
@@ -89,12 +94,27 @@ orbs:
             description: Emergency valve - forcibly build all the modules
             type: boolean
             default: false
+          force-all-tag-pattern:
+            description: tag pattern to forcibly build all the modules
+            type: string
+            default: ""
+          git-tag:
+            description: git tag
+            type: string
+            default: ""
         steps:
           - run:
               name: Generate the list of modules having changes
               command: |
+                declare force_all=false
+                if [[ "<< parameters.force-all >>" == 'true' ]]; then
+                  force_all=true
+                fi
+                if [[ "<< parameters.git-tag >>" != "" ]] && [[ "<< parameters.git-tag >>" =~ "<< parameters.force-all-tag-pattern >>" ]]; then
+                  force_all=true
+                fi
                 # Add each module to `modules-filtered` if 1) `force-all` is set to `true`, 2) there is a diff against `base-revision`, 3) there is no `HEAD~1` (i.e., this is the very first commit for the repo) OR 4) there is a diff against the previous commit
-                cat \<< EOD | sed -e '/^$/d' | while read row; do module="$(echo "$row" | awk '{ print $1 }')"; if [ << parameters.force-all >> == 'true' ] || [ $(git diff --name-only << parameters.base-revision >> "$module" | wc -l) -gt 0 ] || (! git rev-parse --verify HEAD~1) || [ $(git diff --name-only HEAD~1 "$module" | wc -l) -gt 0 ]; then echo "$row" | sed -e 's/ /\n/g' >> << parameters.modules-filtered >>; fi; done
+                cat \<< EOD | sed -e '/^$/d' | while read row; do module="$(echo "$row" | awk '{ print $1 }')"; if [ ${force_all} == 'true' ] || [ $(git diff --name-only << parameters.base-revision >> "$module" | wc -l) -gt 0 ] || (! git rev-parse --verify HEAD~1) || [ $(git diff --name-only HEAD~1 "$module" | wc -l) -gt 0 ]; then echo "$row" | sed -e 's/ /\n/g' >> << parameters.modules-filtered >>; fi; done
                 << parameters.modules >>
                 EOD
 
@@ -150,6 +170,14 @@ orbs:
             description: Emergency valve - forcibly build all the modules
             type: boolean
             default: false
+          force-all-tag-pattern:
+            description: tag pattern to forcibly build all the modules
+            type: string
+            default: ""
+          git-tag:
+            description: git tag
+            type: string
+            default: ""
           modules-filtered:
             description: Path to the file where the filtered list of modules is generated
             type: string
@@ -174,6 +202,8 @@ orbs:
               modules-filtered: << parameters.modules-filtered >>
               base-revision: << parameters.base-revision >>
               force-all: << parameters.force-all >>
+              force-all-tag-pattern: << parameters.force-all-tag-pattern >>
+              git-tag: << parameters.git-tag >>
           - merge-modular-configs:
               modules: << parameters.modules-filtered >>
               shared-config: << parameters.shared-config >>
